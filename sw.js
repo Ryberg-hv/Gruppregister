@@ -1,6 +1,6 @@
 /* Service worker för Gruppregister.
    Höj VERSION vid varje ny uppladdning så att gamla filer rensas. */
-const VERSION = 'gruppregister-v1';
+const VERSION = 'gruppregister-v2';
 const CORE = [
   './',
   './index.html',
