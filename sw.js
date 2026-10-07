@@ -1,7 +1,7 @@
 /* Service worker för Gruppregister.
    Höj VERSION vid varje ny uppladdning så att gamla filer rensas.
    Ändra samtidigt SW_CACHE_VERSION i index.html till samma värde. */
-const VERSION = 'gruppregister-v9';
+const VERSION = 'gruppregister-v10';
 const CORE = [
   './',
   './index.html',

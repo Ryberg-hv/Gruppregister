@@ -3021,10 +3021,15 @@ function renderBackupBanner(){
   const t = lastBackupTime();
   const days = t ? Math.floor((Date.now()-t)/86400000) : null;
   if(days!==null && days < BACKUP_REMIND_DAYS) return '';
+  const ignoredAt = Number(lsGet('backupignore:'+(currentFileName||''), 0)) || 0;
+  if(ignoredAt && Date.now()-ignoredAt < BACKUP_REMIND_DAYS*86400000) return '';
   const when = days===null ? 'Du har inte gjort någon säkerhetskopia av det här registret ännu.' : `Senaste säkerhetskopian gjordes för ${days} dagar sedan.`;
   return `<div class="banner" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <span>${when} Registret finns bara i appen på den här enheten — tas appen bort försvinner det. Spara en kopia i Filer eller mejla den till dig själv.</span>
-    <button class="btn primary small" onclick="exportJson()">Säkerhetskopiera nu</button>
+    <span style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn small" onclick="ignoreBackupReminder()" title="Dölj påminnelsen i ${BACKUP_REMIND_DAYS} dagar">Ignorera</button>
+      <button class="btn primary small" onclick="exportJson()">Säkerhetskopiera nu</button>
+    </span>
   </div>`;
 }
 
@@ -4889,6 +4894,10 @@ function rowActionsHtml(p, gid, o){
       ${o.del ? `<button class="iconBtn danger" onclick="deletePerson('${p.id}')" title="Ta bort" aria-label="Ta bort">${ICON.trash}</button>` : ''}
     </div>`;
 }
+function ignoreBackupReminder(){
+  lsSet('backupignore:'+(currentFileName||''), Date.now());
+  renderAll();
+}
 /* ett gemensamt val för rapporterna */
 function openReportChooser(){
   const n = selectedPersons.size;
@@ -6201,6 +6210,9 @@ init();
    höj VERSION i sw.js). Efter upplåsning visas det som är nytt sedan
    användaren senast öppnade appen. Ny installation visar ingen notis. */
 const APP_CHANGELOG = [
+  {version:'2026-10-07.4', title:'Justering 7 oktober 2026 (2)', items:[
+    'Påminnelsen om säkerhetskopiering har fått knappen "Ignorera". Den döljer påminnelsen i 14 dagar, sedan kommer den tillbaka om ingen säkerhetskopia har gjorts.'
+  ]},
   {version:'2026-10-07.3', title:'Justering 7 oktober 2026', items:[
     'Enklare verktygsrad: en knapp som växlar mellan "Markera allt" och "Avmarkera allt", och en knapp "Generera rapport" där du väljer personalrapport eller övningsanmälan.',
     'Gruppvyn: knapparna ligger på två rader — Kopiera och en bred Redigera-knapp överst, flyttknapparna under — så att namnen syns tydligare.',
@@ -6234,7 +6246,7 @@ const APP_CHANGELOG = [
 ];
 const APP_VERSION = APP_CHANGELOG[0].version;
 /* Måste vara samma som VERSION i sw.js. */
-const SW_CACHE_VERSION = 'gruppregister-v9';
+const SW_CACHE_VERSION = 'gruppregister-v10';
 const LS_SEEN_VERSION = 'gruppregister_seen_version';
 var appWasInstalledBefore; // sätts i init(), som körs före den här raden
 function maybeShowWhatsNew(){
