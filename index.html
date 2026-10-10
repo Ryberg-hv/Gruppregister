@@ -814,6 +814,7 @@
     .editBtn{height:32px;}
     .rowActions.lead .plats{height:32px;}
   }
+  .noticeItem.kompaninotis{background:#E6F1E8;border-color:#9CC4A4;}
 </style>
 </head>
 <body>
@@ -975,14 +976,16 @@ function slots(list){ return list.map(b=>({befattning:b, befattningsnummer:''}))
 
 /* Gruppversionen: en grupp med nio fasta platser, samt två små fria
    listor (Ny personal och Avveckling) med högst tre personer vardera. */
-const DEFAULT_GROUPS = [
-  {id:'g1', name:'Grupp', kind:'standard', slots: slots([
-    'GrpC','Stf GrpC','Soldat','Soldat',
-    'Soldat','Soldat','Soldat','Soldat','Soldat'
-  ])},
-  {id:'g7', name:'Ny personal', kind:'recruit', maxPersons:3},
-  {id:'g8', name:'Avveckling', kind:'offboarding', maxPersons:3},
-];
+const GROUP_TYPES = {"skytt": {"label": "Skyttegrupp", "bef": ["GrpC", "Stf GrpC", "Soldat", "Soldat", "Soldat", "Soldat", "Soldat", "Soldat", "Soldat"]}, "stab": {"label": "STAB grupp", "bef": ["STABS GrpC", "Stf STAB GrpC", "STABS Assist", "STABS Assist", "STABSplats sold", "STABSplats sold", "MC Ordonnans", "MC Ordonnans", "MC Ordonnans", "MC Ordonnans"]}, "sjv": {"label": "Sjukvårdsgrupp", "bef": ["SJV GrpC", "Stf SJV GrpC", "Komp SSK", "Sold SJV", "Sold SJV", "Sold SJV", "Sold SJV", "Sold SJV", "Komp SSK", "SJV trsp sold", "SJV trsp sold", "SJV trsp sold"]}, "kok": {"label": "Kok grupp", "bef": ["KOK GrpC", "Kock", "Kock", "Kock", "Kock", "Livsmedelssold", "Livsmedelssold", "Livsmedelssold"]}, "pack": {"label": "Pack grupp", "bef": ["Pack GrpC", "Sold FOFÖ", "Sold FOFÖ", "Sold FOFÖ", "Mekaniker", "Mekaniker"]}};
+function groupsForType(typ){
+  const t = GROUP_TYPES[typ] || GROUP_TYPES.skytt;
+  return [
+    {id:'g1', name:t.label, kind:'standard', slots: slots(t.bef)},
+    {id:'g7', name:'Ny personal', kind:'recruit', maxPersons:3},
+    {id:'g8', name:'Avveckling', kind:'offboarding', maxPersons:3},
+  ];
+}
+const DEFAULT_GROUPS = groupsForType('skytt');
 
 /* ---------- state ---------- */
 let DATA = null;
@@ -1006,13 +1009,14 @@ function ensureCompetencyStatsFlags(list){
   list.forEach(c=>{ if(c.showInStats===undefined) c.showInStats = DEFAULT_COMPETENCIES.some(dc=>dc.id===c.id); });
 }
 
-function defaultData(){
+function defaultData(typ){
   return {
     version:3,
     title:'Gruppregister',
     kompani:'',
     pluton:'',
-    groups: DEFAULT_GROUPS.map(clone),
+    typ: GROUP_TYPES[typ] ? typ : 'skytt',
+    groups: groupsForType(typ).map(clone),
     columnOrder: FIELD_DEFS.map(f=>f.key),
     competencies: DEFAULT_COMPETENCIES.map(c=>({...c})),
     persons:[],
@@ -1288,6 +1292,7 @@ function hydrateData(parsed){
   ensureNotiser(parsed);
   if(parsed.kompani===undefined) parsed.kompani = '';
   if(parsed.pluton===undefined) parsed.pluton = '';
+  if(!GROUP_TYPES[parsed.typ]) parsed.typ = 'skytt';
   ensureKalAnslag(parsed);
   DATA = parsed;
   YEARS = computeYears();
@@ -1335,10 +1340,10 @@ async function loadLocalRegister(key){
     setTimeout(maybeAskGallring, 400);
   }catch(e){ alert('Registret kunde inte läsas.'); }
 }
-function createLocalRegister(name){
+function createLocalRegister(name, typ){
   const label = sanitizeFileBase(name);
   const key = uniqueLsKey(label);
-  DATA = defaultData();
+  DATA = defaultData(typ);
   DATA.title = label;
   currentFileName = key;
   const list = lsLoadRegistry();
@@ -1351,15 +1356,33 @@ function createLocalRegister(name){
 }
 
 /* ---- shared: create / switch / delete ---- */
+function befSummary(list){
+  const out = [];
+  list.forEach(b=>{ const l = out[out.length-1]; if(l && l.b===b) l.n++; else out.push({b, n:1}); });
+  return out.map(o=>o.n>1 ? o.n+' × '+o.b : o.b).join(', ');
+}
+let nrAutoName = '';
+function onNrTypeChange(first){
+  const sel = document.getElementById('nrType'), inp = document.getElementById('nrName'), info = document.getElementById('nrTypeInfo');
+  if(!sel || !inp) return;
+  const t = GROUP_TYPES[sel.value];
+  info.textContent = t.bef.length+' platser: '+befSummary(t.bef);
+  if(first===true){ nrAutoName = ''; }
+  if(!inp.value.trim() || inp.value===nrAutoName){ inp.value = t.label; nrAutoName = t.label; }
+}
 function openNewRegisterModal(){
   const overlay = document.createElement('div');
   overlay.className='overlay';
   overlay.innerHTML = `<div class="modal">
     <h3>Nytt register</h3>
     <div class="formgrid">
-      <div class="field full"><label>Namn på registret</label><input id="nrName" placeholder="t.ex. Pluton Alpha"></div>
+      <div class="field full"><label>Typ av register</label>
+        <select id="nrType" onchange="onNrTypeChange()">${Object.keys(GROUP_TYPES).map(k=>`<option value="${k}">${esc(GROUP_TYPES[k].label)}</option>`).join('')}</select>
+        <div id="nrTypeInfo" style="font-size:12px;color:var(--ink-soft);margin-top:4px;"></div>
+      </div>
+      <div class="field full"><label>Namn på registret</label><input id="nrName" placeholder="t.ex. Skyttegrupp Alfa"></div>
     </div>
-    <p style="color:var(--ink-soft);font-size:12px;">Sparas krypterat i appen på den här enheten. Exportera regelbundet som säkerhetskopia.</p>
+    <p style="color:var(--ink-soft);font-size:12px;">Typen väljs nu och kan inte ändras senare. Sparas krypterat i appen på den här enheten. Exportera regelbundet som säkerhetskopia.</p>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Avbryt</button>
       <button class="btn primary" onclick="submitNewRegister()">Skapa</button>
@@ -1369,6 +1392,7 @@ function openNewRegisterModal(){
   document.body.appendChild(overlay);
   setTimeout(()=>{
     const inp = document.getElementById('nrName');
+    onNrTypeChange(true);
     inp.focus();
     inp.onkeydown = (e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitNewRegister(); } };
   },0);
@@ -1377,8 +1401,9 @@ async function submitNewRegister(){
   const input = document.getElementById('nrName');
   const val = input.value.trim();
   if(!val){ input.focus(); return; }
+  const typ = (document.getElementById('nrType') || {}).value || 'skytt';
   closeModal();
-  createLocalRegister(val);
+  createLocalRegister(val, typ);
 }
 function onRegisterSelect(key){
   if(!key || key===currentFileName) return;
@@ -1682,7 +1707,7 @@ function openExportModal(scope, gid){
    formatting. Instead, any line that isn't recognisable as one of our
    own "Label: value" detail lines is treated as the start of a new
    person. */
-const SLACK_DETAIL_LABEL_RE = /^(Plats|Under utbildning|Grundutbildning|Kompetenser|Avtalsövningar\s+\d{4}|Utvecklingsplan\s+\d{4}|Avtalsår innan\s+\d{4}|Stf PlutC\/PlutC sedan år)\s*:/i;
+const SLACK_DETAIL_LABEL_RE = /^(Plats|Under utbildning|Grundutbildning|Kompetenser|Avtalsövningar\s+\d{4}|Utvecklingsplan\s+\d{4}|Avtalsår innan\s+\d{4}|Stf PlutC\/PlutC sedan år|Notis från kompaniet)\s*:/i;
 function slackFieldPairs(line){
   /* Matches "Label: value" runs without depending on a specific
      separator character between them (Slack round-trips can turn our
@@ -1845,6 +1870,7 @@ function applySlackLines(p, g, lines, skipBefNr){
     else if(/^Avtalsövningar\s+\d{4}:/i.test(line)) applySlackAvtalOvning(p, line);
     else if(/^Utvecklingsplan\s+\d{4}:/i.test(line)) applySlackPlan(p, line);
     else if(/^Avtalsår innan\s+\d{4}:/i.test(line)) applySlackYearsBefore(p, line);
+    else if(/^Notis från kompaniet:/i.test(line)) applySlackKompNotis(p, line);
     else if(/^Stf PlutC\/PlutC sedan år:/i.test(line)) applySlackPlutcSedanAr(p, line);
     else applySlackFieldsLine(p, g, line, skipBefNr);
   });
@@ -2586,7 +2612,9 @@ function personBefattningDisplay(p){
 }
 /* ---------- grade (grad) calculation ---------- */
 function normLabel(s){ return String(s||'').toLowerCase().replace(/[\s\-]/g,''); }
-function normBef(s){ return String(s||'').trim().toLowerCase(); }
+const BEF_ALIAS = {'stabs grpc':'grpc', 'stf stab grpc':'stf grpc', 'sjv grpc':'grpc',
+  'stf sjv grpc':'stf grpc', 'kok grpc':'grpc', 'pack grpc':'grpc'};
+function normBef(s){ const t = String(s||'').trim().toLowerCase(); return BEF_ALIAS[t] || t; }
 function findCompIdByLabel(label){
   const norm = normLabel(label);
   const c = DATA.competencies.find(x=>normLabel(x.label)===norm);
@@ -2884,7 +2912,6 @@ function renderTopbar(){
     html += `<button class="btn small" onclick="goHome()">Startsida</button>`;
     if(registerList.length){
       const options = registerList.map(r=>`<option value="${esc(r.key)}" ${r.key===currentFileName?'selected':''}>${esc(r.label)}</option>`).join('');
-      html += `<span class="status" style="align-self:center;">Välj register</span>`;
       html += `<select class="btn small" id="registerSelect" title="Byt register" onchange="onRegisterSelect(this.value)" style="max-width:190px;">${options}</select>`;
     }
     html += `<button class="btn small" onclick="openNewRegisterModal()" title="Skapa ett nytt, separat register">+ Nytt register</button>`;
@@ -2899,7 +2926,6 @@ function renderTopbar(){
     html += `<button class="btn small" onclick="toggleColumnPanel()">Ordna uppgifter</button>`;
     html += `<button class="btn small" onclick="lockApp()" title="Lås appen">🔒 Lås</button>`;
     html += `<button class="btn small" onclick="startChangePin()">Byt PIN-kod</button>`;
-    html += `<span class="status" id="saveStatus">Sparat</span>`;
     html += `<button class="btn small" onclick="exportJson()">Exportera JSON</button>`;
     html += `<label class="btn small" style="margin:0;">Importera<input type="file" accept="application/json" style="display:none" onchange="importJson(this.files[0])"></label>`;
   }
@@ -4277,12 +4303,12 @@ function renderStats(){
   const inPluton = DATA.persons.filter(p=>groupKind(p.groupId)==='standard');
   const total = inPluton.length;
   const isChefBefattning = (b)=>{
-    const t = (b||'').trim().toLowerCase();
+    const t = normBef(b);
     return t==='grpc' || t==='stf grpc';
   };
   const chefCount = inPluton.filter(p=>isChefBefattning(personBefattning(p))).length;
   const soldatCount = inPluton.filter(p=>{
-    const t = (personBefattning(p)||'').trim().toLowerCase();
+    const t = normBef(personBefattning(p));
     return t!=='grpc' && t!=='stf grpc' && t!=='plutc' && t!=='stf plutc';
   }).length;
 
@@ -4965,10 +4991,38 @@ function computeAllNotices(){
         sortKey:-250000, ackCall:'openGallringModal(true)', ackLabel:'Gallra…'});
     }
   }catch(e){}
-  const all = base.concat(extra, calendarNotices(), boardNotices());
+  const all = base.concat(extra, kompaniNotices(), calendarNotices(), boardNotices());
   const rank = n=>(n.level==='red'?0:1);
   all.sort((a,b)=> rank(a)-rank(b) || (a.sortKey||0)-(b.sortKey||0));
   return all;
+}
+/* ---------- notis från kompaniet (Övrigt-text som följer med ny personal) ----------
+   Kompaniregistret kan skriva en kort text per person vid export. Den läses in
+   som p.kompNotis och visas som en notis tills mottagaren trycker "Noterat".
+   Skickas en ny text för samma person visas den igen. */
+function applySlackKompNotis(p, line){
+  const txt = String(line).replace(/^\s*Notis från kompaniet\s*:\s*/i,'').trim();
+  if(txt === (p.kompNotis||'')) return;
+  p.kompNotis = txt;
+  p.kompNotisAck = false;
+}
+function kompaniNotices(){
+  const out = [];
+  ((DATA && DATA.persons) || []).forEach(p=>{
+    if(!p.kompNotis || p.kompNotisAck) return;
+    const g = getGroup(p.groupId);
+    out.push({kind:'kompaninotis', section:'g:'+p.groupId, gid:p.groupId, pid:p.id, level:'orange',
+      groupName: g ? g.name : '', personName: fullName(p),
+      text: 'Från kompaniet: '+p.kompNotis, sortKey:-260000,
+      ackCall:`ackKompNotis('${p.id}')`, ackLabel:'Noterat'});
+  });
+  return out;
+}
+function ackKompNotis(pid){
+  const p = DATA.persons.find(x=>x.id===pid);
+  if(!p) return;
+  p.kompNotisAck = true;
+  saveToDisk(); renderAll();
 }
 function refreshNoticeCache(){
   if(DATA) ensureKalAnslag(DATA);
@@ -6210,6 +6264,17 @@ init();
    höj VERSION i sw.js). Efter upplåsning visas det som är nytt sedan
    användaren senast öppnade appen. Ny installation visar ingen notis. */
 const APP_CHANGELOG = [
+  {version:'2026-10-10.3', title:'Fem typer av register', items:[
+    'När du skapar ett nytt register väljer du typ: Skyttegrupp, STAB grupp, Sjukvårdsgrupp, Kok grupp eller Pack grupp. Registret får då rätt platser och befattningar, samma som i Troppregistret.',
+    'Typen väljs när registret skapas och kan inte ändras efteråt. Dina befintliga register är Skyttegrupp och fungerar som förut.',
+    'Gruppens namn går att byta utan att det påverkar export och import.'
+  ]},
+  {version:'2026-10-10.2', title:'Justering 10 oktober 2026 (2)', items:[
+    'Menyn är rensad: texterna "Välj register" och "Sparat" är borttagna.'
+  ]},
+  {version:'2026-10-10', title:'Uppdatering 10 oktober 2026', items:[
+    'Förberedd för Kompaniregistret: när kompaniet skickar ny personal kan en kort text (t.ex. "Önskar understödsgrupp") följa med. Den visas som en notis med knappen "Noterat" vid personen i Ny personal. Äldre exporter fungerar som förut.'
+  ]},
   {version:'2026-10-07.4', title:'Justering 7 oktober 2026 (2)', items:[
     'Påminnelsen om säkerhetskopiering har fått knappen "Ignorera". Den döljer påminnelsen i 14 dagar, sedan kommer den tillbaka om ingen säkerhetskopia har gjorts.'
   ]},
@@ -6246,7 +6311,7 @@ const APP_CHANGELOG = [
 ];
 const APP_VERSION = APP_CHANGELOG[0].version;
 /* Måste vara samma som VERSION i sw.js. */
-const SW_CACHE_VERSION = 'gruppregister-v10';
+const SW_CACHE_VERSION = 'gruppregister-v13';
 const LS_SEEN_VERSION = 'gruppregister_seen_version';
 var appWasInstalledBefore; // sätts i init(), som körs före den här raden
 function maybeShowWhatsNew(){
